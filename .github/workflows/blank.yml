@@ -1,0 +1,44 @@
+name: 监测oracleclud服务器状态
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每隔6小时执行一次
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 安装Oracle Cloud CLI
+        run: |
+          bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+      - name: 配置文件前序依赖目录
+        run: |
+          mkdir -p ~/.oci && touch ~/.oci/config && touch ~/.oci/oci_api_key.pem
+      - name: 初始化Oracle Cloud CLI配置文件
+        run: |
+          echo "${{ secrets.OCI_CONFIG_FILE }}" > ~/.oci/config
+          echo "${{ secrets.OCI_CONFIG_PRIVATE_PEM}}" > ~/.oci/oci_api_key.pem
+          /home/runner/bin/oci setup repair-file-permissions --file /home/runner/.oci/config
+          /home/runner/bin/oci setup repair-file-permissions --file ~/.oci/oci_api_key.pem
+      - name: 获取服务器状态并重启
+        run: |
+          # 列出实例并将结果保存到文件 instances.json
+          json_content=$(/home/runner/bin/oci compute instance list --compartment-id '${{secrets.COMPARTMENT}}' --region '${{secrets.REGION}}' --query 'data[*].{Name: "display-name", Status: "lifecycle-state", InstanceId: 'id'}' --output json)
+          # 解析整个文件内容为 JSON 对象
+          instances=$(echo "$json_content" | jq -c '.')
+
+          # 遍历 JSON 数组中的每个对象
+          for instance in $(echo "$instances" | jq -c '.[]'); do
+            instance_status=$(echo "$instance" | jq -r '.Status')
+            instance_id=$(echo "$instance" | jq -r '.InstanceId')
+
+            if [ "$instance_status" != "RUNNING" ]; then
+              echo "Instance $instance_id is not in RUNNING state. Restarting..."
+              /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state TERMINATED
+              /home/runner/bin/oci compute instance action --action START --instance-id "$instance_id" --wait-for-state RUNNING
+            else
+              echo "Instance $instance_id is already in RUNNING state. Skipping restart."
+            fi
+          done

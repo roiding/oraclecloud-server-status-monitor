@@ -11,10 +11,10 @@
 ![REGION](./resource/region.png)
 自行找到自己所对应的REGION，KEY或NAME都可以
 2. COMPARTMENT
-打开https://cloud.oracle.com/identity/compartments，找到除开ManagedCompartmentForPaaS的另一个实际租户的ocid填入
+打开[https://cloud.oracle.com/identity/compartments](https://cloud.oracle.com/identity/compartments)，找到除开ManagedCompartmentForPaaS的另一个实际租户的ocid填入
 ![COMPARTMENT](./resource/compartment-id.png)
 3. OCI_CONFIG_PRIVATE_PEM
-打开https://cloud.oracle.com/identity/domains/my-profile/api-keys，创建一个API密钥
+打开[https://cloud.oracle.com/identity/domains/my-profile/api-keys](https://cloud.oracle.com/identity/domains/my-profile/api-keys)，创建一个API密钥
 然后将保存的私钥文件的内容填入，并记录下指纹下步会使用
 ![fingerprint](./resource/fingerprint.png)
 4. OCI_CONFIG_FILE
@@ -27,4 +27,4 @@ key_file=~/.oci/oci_api_key.pem
 tenancy=第二步的COMPARTMENT
 region=上面找到的那个region
 ```
-打开https://cloud.oracle.com/identity/domains/my-profile复制用户信息中的ocid替换$$
+打开[https://cloud.oracle.com/identity/domains/my-profile](https://cloud.oracle.com/identity/domains/my-profile)复制用户信息中的ocid替换$$

@@ -41,7 +41,7 @@ jobs:
               /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state TERMINATED
               /home/runner/bin/oci compute instance action --action START --instance-id "$instance_id" --wait-for-state RUNNING
               URL="https://sctapi.ftqq.com/${SEND_KEY}.send?title=${instance_id}已重启"
-              curl -s -X GET $URL"
+              curl -s -X GET "$URL"
             else
               echo "Instance $instance_id is already in RUNNING state. Skipping restart."
             fi

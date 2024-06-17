@@ -23,6 +23,8 @@ jobs:
           /home/runner/bin/oci setup repair-file-permissions --file /home/runner/.oci/config
           /home/runner/bin/oci setup repair-file-permissions --file ~/.oci/oci_api_key.pem
       - name: 获取服务器状态并重启
+        env:
+          SEND_KEY: ${{secrets.SEND_KEY}}
         run: |
           # 列出实例并将结果保存到文件 instances.json
           json_content=$(/home/runner/bin/oci compute instance list --compartment-id '${{secrets.COMPARTMENT}}' --region '${{secrets.REGION}}' --query 'data[*].{Name: "display-name", Status: "lifecycle-state", InstanceId: 'id'}' --output json)
@@ -38,6 +40,8 @@ jobs:
               echo "Instance $instance_id is not in RUNNING state. Restarting..."
               /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state TERMINATED
               /home/runner/bin/oci compute instance action --action START --instance-id "$instance_id" --wait-for-state RUNNING
+              URL="https://sctapi.ftqq.com/${SEND_KEY}.send?title=${instance_id}已重启"
+              curl -s -X GET $URL"
             else
               echo "Instance $instance_id is already in RUNNING state. Skipping restart."
             fi

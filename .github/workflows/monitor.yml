@@ -1,4 +1,4 @@
-name: 监测oracleclud服务器状态
+name: 监测oraclecloud服务器状态
 
 on:
   schedule:
@@ -6,43 +6,80 @@ on:
   workflow_dispatch: # 允许手动触发
 
 jobs:
-  monitor:
+  prepare-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          ACCOUNTS='${{ secrets.OCI_ACCOUNTS }}'
+          echo "matrix=$(echo $ACCOUNTS)" >> $GITHUB_OUTPUT
+
+  monitor:
+    needs: prepare-matrix
+    name: 监控 ${{ matrix.account.name }} (${{ matrix.account.region }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        account: ${{fromJson(needs.prepare-matrix.outputs.matrix)}}
 
     steps:
       - name: 安装Oracle Cloud CLI
         run: |
           bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+      
       - name: 配置文件前序依赖目录
         run: |
-          mkdir -p ~/.oci && touch ~/.oci/config && touch ~/.oci/oci_api_key.pem
-      - name: 初始化Oracle Cloud CLI配置文件
+          mkdir -p ~/.oci
+      
+      - name: 创建配置文件
         run: |
-          echo "${{ secrets.OCI_CONFIG_FILE }}" > ~/.oci/config
-          echo "${{ secrets.OCI_CONFIG_PRIVATE_PEM}}" > ~/.oci/oci_api_key.pem
-          /home/runner/bin/oci setup repair-file-permissions --file /home/runner/.oci/config
-          /home/runner/bin/oci setup repair-file-permissions --file ~/.oci/oci_api_key.pem
-      - name: 获取服务器状态并重启
-        env:
-          SEND_KEY: ${{secrets.SEND_KEY}}
+          # 创建私钥文件 (先解码 base64)
+          echo "${{ matrix.account.private_key }}" | base64 -d > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+
+          # 创建配置文件
+          cat > ~/.oci/config << EOF
+          [DEFAULT]
+          user=${{ matrix.account.user }}
+          fingerprint=${{ matrix.account.fingerprint }}
+          key_file=~/.oci/oci_api_key.pem
+          tenancy=${{ matrix.account.tenancy }}
+          region=${{ matrix.account.region }}
+          EOF
+
+          chmod 600 ~/.oci/config
+      
+      - name: 获取服务器状态并重启 (${{ matrix.account.name }} - ${{ matrix.account.region }})
+        id: check_status
         run: |
-          # 列出实例并将结果保存到文件 instances.json
-          json_content=$(/home/runner/bin/oci compute instance list --compartment-id '${{secrets.COMPARTMENT}}' --region '${{secrets.REGION}}' --query 'data[*].{Name: "display-name", Status: "lifecycle-state", InstanceId: 'id'}' --output json)
-          # 解析整个文件内容为 JSON 对象
+          need_notify="false"
+          json_content=$(/home/runner/bin/oci compute instance list --compartment-id '${{ matrix.account.compartment }}' --region '${{ matrix.account.region }}' --query 'data[*].{Name: "display-name", Status: "lifecycle-state", InstanceId: 'id'}' --output json)
           instances=$(echo "$json_content" | jq -c '.')
 
-          # 遍历 JSON 数组中的每个对象
           for instance in $(echo "$instances" | jq -c '.[]'); do
             instance_status=$(echo "$instance" | jq -r '.Status')
             instance_id=$(echo "$instance" | jq -r '.InstanceId')
+            instance_name=$(echo "$instance" | jq -r '.Name')
 
+            echo "检查实例: $instance_name (账号: ${{ matrix.account.name }}, 地域: ${{ matrix.account.region }})"
+            
             if [ "$instance_status" != "RUNNING" ]; then
-              echo "Instance $instance_id is not in RUNNING state. Restarting..."
+              echo "实例 $instance_name ($instance_id) 不在运行状态，正在重启..."
               /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state TERMINATED
               /home/runner/bin/oci compute instance action --action START --instance-id "$instance_id" --wait-for-state RUNNING
-              URL="https://sctapi.ftqq.com/${SEND_KEY}.send?title=${instance_id}已重启"
-              curl -s -X GET "$URL"
+              need_notify="true"
             else
-              echo "Instance $instance_id is already in RUNNING state. Skipping restart."
+              echo "实例 $instance_name ($instance_id) 正在运行中，无需重启。"
             fi
           done
+          
+          echo "need_notify=${need_notify}" >> $GITHUB_OUTPUT
+
+      - name: 发送通知
+        if: steps.check_status.outputs.need_notify == 'true'
+        run: |
+          curl -X POST "https://sctapi.ftqq.com/${{ secrets.SEND_KEY }}.send" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "title=Oracle Cloud 实例状态报告：检测到实例重启 (${{ matrix.account.name }} - ${{ matrix.account.region }})&desp=已执行重启操作"

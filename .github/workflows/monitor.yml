@@ -14,7 +14,9 @@ jobs:
       - id: set-matrix
         run: |
           ACCOUNTS='${{ secrets.OCI_ACCOUNTS }}'
-          echo "matrix=$(echo $ACCOUNTS)" >> $GITHUB_OUTPUT
+          DECODED_ACCOUNTS=$(echo "$ACCOUNTS" | base64 -d)
+          COMPRESSED_JSON=$(echo "$DECODED_ACCOUNTS" | jq -c '.')
+          echo "matrix=$COMPRESSED_JSON" >> $GITHUB_OUTPUT
 
   monitor:
     needs: prepare-matrix
@@ -65,7 +67,10 @@ jobs:
 
             echo "检查实例: $instance_name (账号: ${{ matrix.account.name }}, 地域: ${{ matrix.account.region }})"
             
-            if [ "$instance_status" != "RUNNING" ]; then
+            if [ "$instance_status" = "TERMINATED" ]; then
+              echo "实例 $instance_name ($instance_id) 已销毁，跳过操作。"
+              continue
+            elif [ "$instance_status" != "RUNNING" ]; then
               echo "实例 $instance_name ($instance_id) 不在运行状态，正在重启..."
               /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state TERMINATED
               /home/runner/bin/oci compute instance action --action START --instance-id "$instance_id" --wait-for-state RUNNING

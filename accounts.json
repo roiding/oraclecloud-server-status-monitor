@@ -3,7 +3,7 @@
       "name": "账号1",
       "user": "ocid1.user.oc1..xxx",
       "fingerprint": "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx",
-      "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC9QFi67K6/tXEo\n...\n-----END PRIVATE KEY-----",
+      "private_key": "xxxxxx",
       "tenancy": "ocid1.tenancy.oc1..xxx",
       "region": "ap-tokyo-1",
       "compartment": "ocid1.compartment.oc1..xxx"
@@ -12,7 +12,7 @@
       "name": "账号2",
       "user": "ocid1.user.oc1..yyy",
       "fingerprint": "yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy",
-      "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCxWyqn3CQrN+Ld\n...\n-----END PRIVATE KEY-----",
+      "private_key": "xxxxxx",
       "tenancy": "ocid1.tenancy.oc1..yyy",
       "region": "ap-singapore-1",
       "compartment": "ocid1.compartment.oc1..yyy"

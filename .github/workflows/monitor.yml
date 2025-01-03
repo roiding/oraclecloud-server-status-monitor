@@ -117,24 +117,29 @@ jobs:
           RESTARTED="${{ steps.check_status.outputs.restarted }}"
           STOPPED="${{ steps.check_status.outputs.stopped }}"
           
-          # 构建通知消息
+          # 构建通知消息（使用 Markdown 格式）
           MESSAGE=""
           if [ ! -z "$RESTARTED" ]; then
-            MESSAGE="已重启的实例：${RESTARTED}\n"
+            MESSAGE="${MESSAGE}已重启的实例：${RESTARTED}  \n\n"
           fi
           if [ ! -z "$STOPPED" ]; then
-            MESSAGE="${MESSAGE}已关闭的实例：${STOPPED}\n"
+            MESSAGE="${MESSAGE}已关闭的实例：${STOPPED}"
           fi
           
-          # 根据操作类型设置标题
+          # 设置标题
           if [ ! -z "$RESTARTED" ] && [ ! -z "$STOPPED" ]; then
-            TITLE="Oracle Cloud 实例状态报告：检测到实例重启和关闭"
+            TITLE="Oracle Cloud 实例状态：重启和关闭"
           elif [ ! -z "$RESTARTED" ]; then
-            TITLE="Oracle Cloud 实例状态报告：检测到实例重启"
+            TITLE="Oracle Cloud 实例状态：重启"
           else
-            TITLE="Oracle Cloud 实例状态报告：检测到实例关闭"
+            TITLE="Oracle Cloud 实例状态：关闭"
           fi
+          
+          # 使用 Markdown 格式构建消息正文
+          MESSAGE="**账号**：${{ matrix.account.name }}  \n\n**区域**：${{ matrix.account.region }}  \n\n${MESSAGE}"
           
           curl -X POST "https://sctapi.ftqq.com/${{ secrets.SEND_KEY }}.send" \
             -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "title=${TITLE} (${{ matrix.account.name }} - ${{ matrix.account.region }})&desp=${MESSAGE}"
+            --data-urlencode "title=${TITLE}" \
+            --data-urlencode "desp=${MESSAGE}" \
+            --data-urlencode "markdown=1"

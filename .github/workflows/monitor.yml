@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: '0 */6 * * *' # 每隔6小时执行一次
   workflow_dispatch: # 允许手动触发
+  push: # 添加推送触发
+    branches:
+      - main # 仅当推送到 main 分支时触发
 
 jobs:
   prepare-matrix:
@@ -15,8 +18,9 @@ jobs:
         run: |
           ACCOUNTS='${{ secrets.OCI_ACCOUNTS }}'
           DECODED_ACCOUNTS=$(echo "$ACCOUNTS" | base64 -d)
-          COMPRESSED_JSON=$(echo "$DECODED_ACCOUNTS" | jq -c '.')
-          echo "matrix=$COMPRESSED_JSON" >> $GITHUB_OUTPUT
+          # 使用 jq 过滤出 enabled 为 true 的账号（如果 enabled 字段不存在则默认为 true）
+          FILTERED_ACCOUNTS=$(echo "$DECODED_ACCOUNTS" | jq -c '[.[] | select(.enabled != false)]')
+          echo "matrix=$FILTERED_ACCOUNTS" >> $GITHUB_OUTPUT
 
   monitor:
     needs: prepare-matrix
@@ -57,34 +61,80 @@ jobs:
         id: check_status
         run: |
           need_notify="false"
+          # 创建两个数组来分别存储重启和关闭的实例
+          restarted_instances=()
+          stopped_instances=()
+          
           json_content=$(/home/runner/bin/oci compute instance list --compartment-id '${{ matrix.account.compartment }}' --region '${{ matrix.account.region }}' --query 'data[*].{Name: "display-name", Status: "lifecycle-state", InstanceId: 'id'}' --output json)
           instances=$(echo "$json_content" | jq -c '.')
+          
+          # 获取账号配置中的实例设置
+          ACCOUNTS='${{ secrets.OCI_ACCOUNTS }}'
+          DECODED_ACCOUNTS=$(echo "$ACCOUNTS" | base64 -d)
+          INSTANCE_SETTINGS=$(echo "$DECODED_ACCOUNTS" | jq -r --arg name "${{ matrix.account.name }}" '.[] | select(.name == $name) | .instances // []')
 
           for instance in $(echo "$instances" | jq -c '.[]'); do
             instance_status=$(echo "$instance" | jq -r '.Status')
             instance_id=$(echo "$instance" | jq -r '.InstanceId')
             instance_name=$(echo "$instance" | jq -r '.Name')
-
+            
+            # 检查实例是否在配置中被禁用（通过名称匹配）
+            instance_enabled=$(echo "$INSTANCE_SETTINGS" | jq -r --arg name "$instance_name" '.[] | select(.name == $name) | .enabled')
+            
             echo "检查实例: $instance_name (账号: ${{ matrix.account.name }}, 地域: ${{ matrix.account.region }})"
             
             if [ "$instance_status" = "TERMINATED" ]; then
-              echo "实例 $instance_name ($instance_id) 已销毁，跳过操作。"
+              echo "实例 $instance_name 已销毁，跳过操作。"
               continue
+            fi
+
+            if [ "$instance_enabled" = "false" ]; then
+              echo "实例 $instance_name 已配置为禁用状态，执行关闭操作..."
+              if [ "$instance_status" != "STOPPED" ]; then
+                /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state STOPPED
+                stopped_instances+=("$instance_name")
+                need_notify="true"
+              fi
             elif [ "$instance_status" != "RUNNING" ]; then
-              echo "实例 $instance_name ($instance_id) 不在运行状态，正在重启..."
-              /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state TERMINATED
+              echo "实例 $instance_name 不在运行状态，正在重启..."
+              /home/runner/bin/oci compute instance action --action STOP --instance-id "$instance_id" --wait-for-state STOPPED
               /home/runner/bin/oci compute instance action --action START --instance-id "$instance_id" --wait-for-state RUNNING
+              restarted_instances+=("$instance_name")
               need_notify="true"
             else
-              echo "实例 $instance_name ($instance_id) 正在运行中，无需重启。"
+              echo "实例 $instance_name 正在运行中，无需操作。"
             fi
           done
           
+          # 将实例列表保存到输出变量
           echo "need_notify=${need_notify}" >> $GITHUB_OUTPUT
+          echo "restarted=$(IFS=,; echo "${restarted_instances[*]}")" >> $GITHUB_OUTPUT
+          echo "stopped=$(IFS=,; echo "${stopped_instances[*]}")" >> $GITHUB_OUTPUT
 
       - name: 发送通知
         if: steps.check_status.outputs.need_notify == 'true'
         run: |
+          RESTARTED="${{ steps.check_status.outputs.restarted }}"
+          STOPPED="${{ steps.check_status.outputs.stopped }}"
+          
+          # 构建通知消息
+          MESSAGE=""
+          if [ ! -z "$RESTARTED" ]; then
+            MESSAGE="已重启的实例：${RESTARTED}\n"
+          fi
+          if [ ! -z "$STOPPED" ]; then
+            MESSAGE="${MESSAGE}已关闭的实例：${STOPPED}\n"
+          fi
+          
+          # 根据操作类型设置标题
+          if [ ! -z "$RESTARTED" ] && [ ! -z "$STOPPED" ]; then
+            TITLE="Oracle Cloud 实例状态报告：检测到实例重启和关闭"
+          elif [ ! -z "$RESTARTED" ]; then
+            TITLE="Oracle Cloud 实例状态报告：检测到实例重启"
+          else
+            TITLE="Oracle Cloud 实例状态报告：检测到实例关闭"
+          fi
+          
           curl -X POST "https://sctapi.ftqq.com/${{ secrets.SEND_KEY }}.send" \
             -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "title=Oracle Cloud 实例状态报告：检测到实例重启 (${{ matrix.account.name }} - ${{ matrix.account.region }})&desp=已执行重启操作"
+            -d "title=${TITLE} (${{ matrix.account.name }} - ${{ matrix.account.region }})&desp=${MESSAGE}"

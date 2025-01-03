@@ -6,15 +6,17 @@
       "private_key": "xxxxxx",
       "tenancy": "ocid1.tenancy.oc1..xxx",
       "region": "ap-tokyo-1",
-      "compartment": "ocid1.compartment.oc1..xxx"
-    },
-    {
-      "name": "账号2",
-      "user": "ocid1.user.oc1..yyy",
-      "fingerprint": "yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy:yy",
-      "private_key": "xxxxxx",
-      "tenancy": "ocid1.tenancy.oc1..yyy",
-      "region": "ap-singapore-1",
-      "compartment": "ocid1.compartment.oc1..yyy"
+      "compartment": "ocid1.compartment.oc1..xxx",
+      "enabled": true,
+      "instances": [
+        {
+          "name": "实例1",
+          "enabled": true
+        },
+        {
+          "name": "实例2",
+          "enabled": false
+        }
+      ]
     }
-  ]
+]

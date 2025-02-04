@@ -33,7 +33,7 @@ jobs:
     steps:
       - name: 安装Oracle Cloud CLI
         run: |
-          bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+          bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults --oci-cli-version 3.51.5
       
       - name: 配置文件前序依赖目录
         run: |

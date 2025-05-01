@@ -3,17 +3,27 @@ on:
   schedule:
     - cron: '0 0 1,20 * *'
 permissions:
-  actions: write
+  contents: write  # 需要允许推送内容
 jobs:
   cronjob-based-github-action:
     name: 保活
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: gautamkrishnar/keepalive-workflow@v2
-        with:
-          commit_message: 空提交保活
-          committer_username: roiding
-          committer_email: maodoulove19950815@gmail.com
-          workflow_files: monitor.yml
+      - name: 初始化用户
+        run: |
+          git config --global user.name "roiding"
+          git config --global user.email "maodoulove19950815@gmail.com"
+      - name: 创建空提交
+        run: |
+          git commit --allow-empty -m "空提交保活"  # 创建空提交
+          git push origin main  # 推送空提交
+      - name: 重制提交
+        run: |
+          # 获取当前分支的最新提交哈希
+          current_commit=$(git rev-parse HEAD)
+          # 获取目标提交的前一个哈希
+          previous_commit=$(git rev-parse HEAD^1)
+          # 强制将分支重置到之前的提交，删除空提交
+          git reset --hard $previous_commit
+          git push origin main --force  # 强制推送到仓库，删除空提交
